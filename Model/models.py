@@ -1,5 +1,5 @@
 from enum import Enum
-
+from typing import List, Optional
 
 class RoleType(Enum):
     PRODUCER = "PRODUCER"
@@ -7,74 +7,74 @@ class RoleType(Enum):
     EDITOR = "EDITOR"
     CREATOR = "CREATOR"
 
-
 class RequestStatus(Enum):
-    PENDING = "PENDING"
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
-    CANCELLED = "CANCELLED"
+    PENDING = "รอพิจารณา"
+    APPROVED = "อนุมัติแล้ว"
+    REJECTED = "ไม่อนุมัติ"
+    CANCELLED = "ยกเลิก"
 
-
-class VoteChoice(Enum):
+class Decision(Enum):
     APPROVE = "APPROVE"
     REJECT = "REJECT"
 
+class InvalidOperationException(Exception):
+    """ใช้เมื่อ business rule ของระบบไม่อนุญาตให้ดำเนินการ"""
+    def __init__(self, reason: str):
+        super().__init__(reason)
 
 class Member:
-    def __init__(self, member_id, name, role, active=True):
+    def __init__(self, member_id: str, name: str, role: RoleType, active: bool = True):
         self.id = member_id
         self.name = name
-        self.role = RoleType(role)
+        self.role = role
         self.active = active
 
-    def change_role(self, new_role):
-        self.role = RoleType(new_role)
+    def change_role(self, new_role: RoleType):
+        self.role = new_role
 
+    def is_active(self) -> bool:
+        return self.active
 
-class Vote:
-    def __init__(self, choice, voter):
-        self.choice = VoteChoice(choice)
+    def __repr__(self):
+        return f"Member(id={self.id}, name={self.name}, role={self.role.value})"
+
+class Comment:
+    def __init__(self, voter: Member, decision: Decision, seq_no: int):
         self.voter = voter
+        self.decision = decision
+        self.seq_no = seq_no
 
+    def __repr__(self):
+        return f"Comment(voter={self.voter.id}, decision={self.decision.value}, seq={self.seq_no})"
 
-class RoleChangeRequest:
-    def __init__(self, request_id, proposer, target, new_role):
+class ChangeRequest:
+    def __init__(self, request_id: str, proposer: Member, target: Member,
+                 new_role: RoleType, comments: Optional[List[Comment]] = None):
         self.id = request_id
         self.proposer = proposer
         self.target = target
-        self.new_role = RoleType(new_role)
-
+        self.new_role = new_role
         self.status = RequestStatus.PENDING
-        self.comments = []
-        self.votes = []
+        self.comments = comments if comments is not None else []
 
-    def add_comment(self, comment):
+    def has_voted(self, member_id: str) -> bool:
+        return any(c.voter.id == member_id for c in self.comments)
+
+    def approve_count(self) -> int:
+        return sum(c.decision == Decision.APPROVE for c in self.comments)
+
+    def reject_count(self) -> int:
+        return sum(c.decision == Decision.REJECT for c in self.comments)
+
+    def is_finalized(self) -> bool:
+        return self.status in (RequestStatus.APPROVED, RequestStatus.REJECTED, RequestStatus.CANCELLED)
+
+    def add_comment(self, comment: Comment):
         self.comments.append(comment)
 
-    def approve_count(self):
-        count = 0
+    def next_seq_no(self) -> int:
+        return len(self.comments) + 1
 
-        for vote in self.votes:
-            if vote.choice == VoteChoice.APPROVE:
-                count += 1
-
-        return count
-
-    def reject_count(self):
-        count = 0
-
-        for vote in self.votes:
-            if vote.choice == VoteChoice.REJECT:
-                count += 1
-
-        return count
-
-    def has_voted(self, member_id):
-        for vote in self.votes:
-            if vote.voter.id == member_id:
-                return True
-
-        return False
-
-    def is_finished(self):
-        return self.status != RequestStatus.PENDING
+    def __repr__(self):
+        return (f"ChangeRequest(id={self.id}, {self.proposer.id}->{self.target.id}, "
+                f"new_role={self.new_role.value}, status={self.status.value}, comments={self.comments})")

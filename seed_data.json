@@ -2,90 +2,73 @@
   "members": [
     {
       "id": "M01",
-      "name": "คุยกันได้",
+      "name": "Member 01",
       "role": "PRODUCER",
       "active": true
     },
     {
       "id": "M02",
-      "name": "ใบเสร็จอยู่ไหน",
-      "role": "FINANCE",
+      "name": "Member 02",
+      "role": "PRODUCER",
       "active": true
     },
     {
       "id": "M03",
-      "name": "ตัดคลิปก่อน",
+      "name": "Member 03",
       "role": "EDITOR",
       "active": true
     },
     {
       "id": "M04",
-      "name": "เพื่อนกันตลอดไป",
-      "role": "CREATOR",
+      "name": "Member 04",
+      "role": "FINANCE",
       "active": true
     },
     {
       "id": "M05",
-      "name": "อ่านแชตย้อนหลัง",
-      "role": "CREATOR",
+      "name": "Member 05",
+      "role": "PRODUCER",
       "active": true
     }
   ],
-
   "requests": [
     {
       "id": "C01",
       "proposer": "M01",
       "target": "M02",
       "new_role": "EDITOR",
-      "status": "PENDING",
-      "comments": [],
-      "votes": [
+      "comments": [
         {
           "voter": "M03",
-          "choice": "APPROVE"
+          "decision": "APPROVE"
         }
       ]
     },
-
     {
       "id": "C02",
-      "proposer": "M02",
+      "proposer": "M01",
       "target": "M03",
-      "new_role": "CREATOR",
-      "status": "PENDING",
-      "comments": [],
-      "votes": [
+      "new_role": "EDITOR",
+      "comments": [
         {
           "voter": "M04",
-          "choice": "REJECT"
+          "decision": "REJECT"
         }
       ]
     },
-
     {
       "id": "C03",
       "proposer": "M03",
       "target": "M04",
-      "new_role": "EDITOR",
-      "status": "PENDING",
-      "comments": [],
-      "votes": []
+      "new_role": "CREATOR",
+      "comments": []
     },
-
     {
       "id": "C04",
       "proposer": "M04",
       "target": "M05",
-      "new_role": "PRODUCER",
-      "status": "PENDING",
-      "comments": [],
-      "votes": [
-        {
-          "voter": "M01",
-          "choice": "APPROVE"
-        }
-      ]
+      "new_role": "EDITOR",
+      "comments": []
     }
   ]
 }

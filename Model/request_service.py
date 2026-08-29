@@ -1,179 +1,129 @@
-from Model.models import RoleChangeRequest
-from Model.models import Vote
-from Model.models import RequestStatus
+from dataclasses import dataclass, field
+from typing import List
+from .models import ChangeRequest, Comment, Decision, InvalidOperationException, Member, RoleType, RequestStatus
+from .repository import ChangeRequestRepository, MemberRepository
 
+REQUIRED_VOTES = 2
+
+@dataclass
+class SummaryReport:
+    pending: List[ChangeRequest] = field(default_factory=list)
+    approved: List[ChangeRequest] = field(default_factory=list)
+    rejected: List[ChangeRequest] = field(default_factory=list)
+    cancelled: List[ChangeRequest] = field(default_factory=list)
 
 class RequestService:
+    def __init__(self, member_repo, request_repo: ChangeRequestRepository = None):
+        if hasattr(member_repo, "member_repo") and hasattr(member_repo, "request_repo") and request_repo is None:
+            self.member_repo = member_repo.member_repo
+            self.request_repo = member_repo.request_repo
+        else:
+            self.member_repo = member_repo
+            self.request_repo = request_repo or ChangeRequestRepository(member_repo)
 
-    def __init__(self, datastore):
-        self.datastore = datastore
+    def create_request(self, proposer_id: str, target_id: str, new_role):
+        try:
+            proposer = self._require_member(proposer_id)
+            target = self._require_member(target_id)
+            if proposer.id == target.id:
+                raise InvalidOperationException("ผู้เสนอไม่สามารถเป็นสมาชิกเป้าหมายของคำขอตนเองได้")
+            if not proposer.is_active() or not target.is_active():
+                raise InvalidOperationException("ผู้เสนอและสมาชิกเป้าหมายต้องมีสถานะ Active")
+            existing = self.request_repo.find_pending_by_target(target.id)
+            if existing:
+                raise InvalidOperationException(
+                    f"สมาชิกเป้าหมาย {target.id} มีคำขอที่ยัง 'รอพิจารณา' อยู่แล้ว ({existing.id})"
+                )
+            if isinstance(new_role, str):
+                try:
+                    new_role = RoleType(new_role)
+                except ValueError:
+                    raise InvalidOperationException(f"บทบาทใหม่ไม่ถูกต้อง: {new_role}")
+            new_id = self.request_repo.generate_next_id()
+            request = ChangeRequest(request_id=new_id, proposer=proposer, target=target, new_role=new_role)
+            self.request_repo.add(request)
+            return True, request
+        except InvalidOperationException as e:
+            return False, str(e)
 
-    # -------------------------
-    # สร้างคำขอ
-    # -------------------------
+    def submit_comment(self, request_id: str, voter_id: str, decision):
+        try:
+            request = self._require_request(request_id)
+            voter = self._require_member(voter_id)
+            if request.is_finalized():
+                raise InvalidOperationException(
+                    f"คำขอ {request.id} สิ้นสุดแล้ว (สถานะ={request.status.value}) ไม่สามารถลงความเห็นเพิ่มได้"
+                )
+            if not voter.is_active():
+                raise InvalidOperationException(f"สมาชิก {voter.id} ไม่ได้อยู่ในสถานะ Active")
+            if voter.id == request.proposer.id or voter.id == request.target.id:
+                raise InvalidOperationException(
+                    f"สมาชิก {voter.id} เป็นผู้เสนอหรือสมาชิกเป้าหมายของคำขอนี้ ไม่มีสิทธิ์ลงความเห็น"
+                )
+            if request.has_voted(voter.id):
+                raise InvalidOperationException(f"สมาชิก {voter.id} เคยลงความเห็นต่อคำขอนี้ไปแล้ว")
+            if isinstance(decision, str):
+                try:
+                    decision = Decision(decision)
+                except ValueError:
+                    raise InvalidOperationException(f"ความเห็นไม่ถูกต้อง: {decision}")
+            comment = Comment(voter=voter, decision=decision, seq_no=request.next_seq_no())
+            request.add_comment(comment)
+            self._finalize_if_needed(request)
+            return True, request
+        except InvalidOperationException as e:
+            return False, str(e)
 
-    def create_request(self, proposer_id, target_id, new_role):
+    # Alias used by some MVC versions/tests.
+    add_vote = submit_comment
 
-        proposer = self.datastore.find_member(proposer_id)
-        target = self.datastore.find_member(target_id)
-
-        if proposer is None:
-            return False, "ไม่พบผู้เสนอ"
-
-        if target is None:
-            return False, "ไม่พบสมาชิกเป้าหมาย"
-
-        if not proposer.active:
-            return False, "ผู้เสนอไม่ได้เป็นสมาชิก Active"
-
-        if not target.active:
-            return False, "สมาชิกเป้าหมายไม่ได้เป็นสมาชิก Active"
-
-        # ผู้เสนอห้ามเป็นเป้าหมาย
-        if proposer.id == target.id:
-            return False, "ผู้เสนอไม่สามารถเป็นสมาชิกเป้าหมายได้"
-
-        # ห้ามมีคำขอ Pending ของเป้าหมายซ้ำ
-        for request in self.datastore.requests:
-
-            if request.target.id == target.id:
-                if request.status == RequestStatus.PENDING:
-                    return False, "สมาชิกเป้าหมายมีคำขอรอพิจารณาอยู่แล้ว"
-
-        request_id = self.get_next_request_id()
-
-        request = RoleChangeRequest(
-            request_id,
-            proposer,
-            target,
-            new_role
-        )
-
-        self.datastore.add_request(request)
-
-        return True, request
-
-    # -------------------------
-    # สร้าง Request ID
-    # -------------------------
-
-    def get_next_request_id(self):
-
-        number = len(self.datastore.requests) + 1
-
-        return "C" + str(number)
-
-    # -------------------------
-    # ลงความเห็น
-    # -------------------------
-
-    def add_vote(self, request_id, voter_id, choice):
-
-        request = self.datastore.find_request(request_id)
-        voter = self.datastore.find_member(voter_id)
-
-        if request is None:
-            return False, "ไม่พบคำขอ"
-
-        if voter is None:
-            return False, "ไม่พบสมาชิก"
-
-        if not voter.active:
-            return False, "สมาชิกไม่ได้อยู่ในสถานะ Active"
-
-        # คำขอจบแล้ว
-        if request.is_finished():
-            return False, "คำขอนี้จบแล้ว ไม่สามารถลงความเห็นได้"
-
-        # ผู้เสนอห้ามโหวต
-        if voter.id == request.proposer.id:
-            return False, "ผู้เสนอไม่สามารถลงความเห็นคำขอของตนเองได้"
-
-        # สมาชิกเป้าหมายห้ามโหวต
-        if voter.id == request.target.id:
-            return False, "สมาชิกเป้าหมายไม่สามารถลงความเห็นคำขอนี้ได้"
-
-        # โหวตซ้ำ
-        if request.has_voted(voter.id):
-            return False, "สมาชิกคนนี้ลงความเห็นไปแล้ว"
-
-        vote = Vote(choice, voter)
-
-        request.votes.append(vote)
-
-        # ตรวจสอบผลทันที
-        self.check_result(request)
-
-        return True, "ลงความเห็นสำเร็จ"
-
-    # -------------------------
-    # ตรวจสอบผลการโหวต
-    # -------------------------
-
-    def check_result(self, request):
-
-        # APPROVE ครบ 2
-        if request.approve_count() >= 2:
-
+    def _finalize_if_needed(self, request: ChangeRequest):
+        if request.approve_count() >= REQUIRED_VOTES:
             request.status = RequestStatus.APPROVED
-
-            request.target.change_role(
-                request.new_role
-            )
-
-        # REJECT ครบ 2
-        elif request.reject_count() >= 2:
-
+            request.target.change_role(request.new_role)
+            return
+        if request.reject_count() >= REQUIRED_VOTES:
             request.status = RequestStatus.REJECTED
 
-    # -------------------------
-    # ยกเลิกคำขอ
-    # -------------------------
+    def cancel_request(self, request_id: str, requester_id: str):
+        try:
+            request = self._require_request(request_id)
+            if request.proposer.id != requester_id:
+                raise InvalidOperationException("มีเพียงผู้เสนอคำขอเท่านั้นที่ยกเลิกคำขอนี้ได้")
+            if request.status != RequestStatus.PENDING:
+                raise InvalidOperationException(
+                    f"คำขอ {request.id} ไม่ได้อยู่ในสถานะ 'รอพิจารณา' (ปัจจุบัน={request.status.value})"
+                )
+            if len(request.comments) > 0:
+                raise InvalidOperationException(
+                    f"คำขอ {request.id} มีความเห็นถูกบันทึกแล้ว ({len(request.comments)} ความเห็น) ไม่สามารถยกเลิกได้"
+                )
+            request.status = RequestStatus.CANCELLED
+            return True, request
+        except InvalidOperationException as e:
+            return False, str(e)
 
-    def cancel_request(self, request_id, proposer_id):
+    def get_summary(self):
+        report = SummaryReport()
+        for r in self.request_repo.find_all():
+            if r.status == RequestStatus.PENDING:
+                report.pending.append(r)
+            elif r.status == RequestStatus.APPROVED:
+                report.approved.append(r)
+            elif r.status == RequestStatus.REJECTED:
+                report.rejected.append(r)
+            elif r.status == RequestStatus.CANCELLED:
+                report.cancelled.append(r)
+        return report
 
-        request = self.datastore.find_request(request_id)
+    def _require_member(self, member_id: str) -> Member:
+        member = self.member_repo.find_by_id(member_id)
+        if member is None:
+            raise InvalidOperationException(f"ไม่พบสมาชิก {member_id}")
+        return member
 
+    def _require_request(self, request_id: str) -> ChangeRequest:
+        request = self.request_repo.find_by_id(request_id)
         if request is None:
-            return False, "ไม่พบคำขอ"
-
-        # ต้องเป็นผู้เสนอ
-        if request.proposer.id != proposer_id:
-            return False, "เฉพาะผู้เสนอเท่านั้นที่ยกเลิกได้"
-
-        # ต้อง Pending
-        if request.status != RequestStatus.PENDING:
-            return False, "คำขอนี้ไม่อยู่ในสถานะรอพิจารณา"
-
-        # ถ้ามีคนโหวตแล้ว ยกเลิกไม่ได้
-        if len(request.votes) > 0:
-            return False, "คำขอที่มีความเห็นแล้วไม่สามารถยกเลิกได้"
-
-        request.status = RequestStatus.CANCELLED
-
-        return True, "ยกเลิกคำขอสำเร็จ"
-
-    # -------------------------
-    # สรุปผล
-    # -------------------------
-
-    def get_request_summary(self, request_id):
-
-        request = self.datastore.find_request(request_id)
-
-        if request is None:
-            return None
-
-        summary = {
-            "id": request.id,
-            "proposer": request.proposer,
-            "target": request.target,
-            "new_role": request.new_role.value,
-            "status": request.status.value,
-            "approve": request.approve_count(),
-            "reject": request.reject_count(),
-            "votes": request.votes,
-            "comments": request.comments
-        }
-
-        return summary
+            raise InvalidOperationException(f"ไม่พบคำขอ {request_id}")
+        return request
