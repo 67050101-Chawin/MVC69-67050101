@@ -23,5 +23,5 @@ class DataStore:
     def all_requests(self):
         return self.request_repo.find_all()
 
-# Backward-compatible lowercase name used by the original main.py.
+
 datastore = DataStore

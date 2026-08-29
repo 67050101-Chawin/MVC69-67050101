@@ -3,11 +3,8 @@ from Model.request_service import RequestService
 from Model.models import RequestStatus
 from Model.models import RoleType
 
-
-# ใช้ข้อมูลชุดเดียวกันตลอด T1-T6
 datastore = DataStore()
 service = RequestService(datastore)
-
 
 # ==================================
 # T1

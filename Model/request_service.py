@@ -74,7 +74,7 @@ class RequestService:
         except InvalidOperationException as e:
             return False, str(e)
 
-    # Alias used by some MVC versions/tests.
+  
     add_vote = submit_comment
 
     def _finalize_if_needed(self, request: ChangeRequest):

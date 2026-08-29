@@ -18,7 +18,7 @@ class Decision(Enum):
     REJECT = "REJECT"
 
 class InvalidOperationException(Exception):
-    """ใช้เมื่อ business rule ของระบบไม่อนุญาตให้ดำเนินการ"""
+   
     def __init__(self, reason: str):
         super().__init__(reason)
 

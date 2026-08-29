@@ -41,7 +41,6 @@ class ChangeRequestRepository:
                 request_id=r["id"], proposer=proposer, target=target,
                 new_role=RoleType(r["new_role"]), comments=comments
             )
-            # Seed may contain a finalized status; otherwise derive it from votes.
             status = r.get("status")
             if status:
                 from .models import RequestStatus
