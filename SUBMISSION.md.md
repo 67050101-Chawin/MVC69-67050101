@@ -1,7 +1,6 @@
 # SUBMISSION - Exit Exam MVC 1/2569 (เสาร์บ่าย)
 
 ## 1. วิธีเปิดโปรแกรม
-
 - ภาษา/เฟรมเวิร์ก: Python 3 / MVC
 - Entry point / คำสั่งเปิดโปรแกรม: เปิด Terminal ที่โฟลเดอร์โปรเจกต์ แล้วรัน `python main.py` และ test_scenarios.py ด้วย ` test_scenarios.py`
 - หมายเหตุที่จำเป็น (ถ้ามี): ระบบเป็นConsoleต้องมีไฟล์ `seed_data.json` 
@@ -17,7 +16,6 @@
 | R5 | `SummaryReport`, `RequestService.get_summary()` | `RequestController.show_summary()` | เมนู 6: ดูสรุปผล |
 ## 3. ผลการทดสอบ
 | กรณี | ผ่าน/ไม่ผ่าน | หมายเหตุ (เฉพาะที่จำเป็น) |
-|---|---|---|
 |T1	|ผ่าน|สร้างคำขอสำเร็จ
 |T2	|ผ่าน|ระบบไม่อนุญาตให้สร้างคำขอซ้ำ
 |T3	|ผ่าน|C01 อนุมัติหลังได้รับ 2 APPROVE และ M02 เปลี่ยนเป็น EDITOR
